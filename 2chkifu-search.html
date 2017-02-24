@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>2chkifu.zip 検索</title>
+    <meta charset="utf-8"/>
+    <script src="jszip.min.js"></script>
+    <script src="jszip-utils.min.js"></script>
+  </head>
+
+  <body>
+    <H2>2chkifu.zip 検索</h2>
+    <p><a href="https://code.google.com/archive/p/zipkifubrowser/downloads">2chkifu.zip</a>の棋譜の盤面を正規表現で検索します(遅いです)</p>
+    <div id="queryArea">
+      検索パターン（正規表現）<br>
+      <textarea id="query" rows="3" cols="40" placeholder="^....([A-Za-z]..../....){8}[A-Za-z]"></textarea>
+      <button id="button1" onclick="startSearch()">検索開始</button>
+    </div>
+    <UL>
+      <LI> P:歩 L:香 N:桂 S:銀 G:金 B:角 R:飛 K:玉 T:と金 A:成香 I:成桂 V:成銀 H:馬 D:龍 _:空白 /:段の区切り </LI>
+      <LI>先手の駒:大文字 後手の駒:小文字</LI>
+      <LI>スペースを空けると複数のパターンになります</LI>
+      <LI>持ち駒は検索しません</LI>
+      <LI>100以上見つかったら終了します</LI>
+      <LI>（参考）初手７六歩の盤面
+        <p>lnsgkgsnl/_r_____b_/ppppppppp/_________/_________/__P______/PP_PPPPPP/_B_____R_/LNSGKGSNL</p></LI>
+    </UL>
+    <div id="searchState"></div>
+    <div id="resultData"></div>
+    <script>
+
+var kifBin;
+var kifInfo;
+var zip2chfile;
+var shiftjisDecoder = new TextDecoder('shift_jis');
+const startBoard = 'lnsgkgsnl/' +  '_r_____b_/' +  'ppppppppp/' +  '_________/' +  '_________/' +  '_________/' +  'PPPPPPPPP/' +  '_B_____R_/' +  'LNSGKGSNL';
+const pieceNumber = '_PLNSGBRKTAIVHDplnsgbrktaivhd';
+
+function loadKifBin() {
+  var xhr = new XMLHttpRequest();
+  if (xhr) {
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState == 4) {
+        if (xhr.status == 200) {
+          console.log("2chkifu.bin:", xhr.response);
+          kifBin = new Uint16Array(xhr.response);
+
+          // call startSearch()
+          startSearch();
+        }
+      }
+    }
+    xhr.open("GET", "2chkifu.bin");
+    xhr.responseType = "arraybuffer";
+    xhr.send();
+  } 
+}
+
+function loadKifInfo() {
+  var xhr = new XMLHttpRequest();
+
+  if (xhr) {
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState == 4) {
+        if (xhr.status == 200) {
+          console.log("2chkifu.info:", xhr.response.length);
+          kifInfo = xhr.responseText.split("\n");
+
+          // call startSearch()
+          startSearch();
+        }
+      }
+    }
+    xhr.open("GET", "2chkifu.info");
+    xhr.overrideMimeType("text/plain");
+    xhr.send();
+  }
+}
+
+function startSearch () {
+  console.log("startSearch()");
+
+  if (!kifBin) {
+    console.log("startSearch(): !kifBin");
+    loadKifBin();
+    return 0;
+  }
+
+  if (!kifInfo) {
+    console.log("startSearch(): !kifInfo");
+    loadKifInfo();
+    return 0;
+  }
+
+  document.getElementById('searchState').innerHTML = '検索中';
+  document.getElementById('resultData').innerHTML = '結果';
+
+  var queryStr = document.getElementById("query").value;
+  var queryList = queryStr.split(/\s+/);
+
+  var numKifus = 0;
+  var numMoves = 0;
+  var numFound = 0;
+  var game = new ShogiBoard();
+  searchLoop(queryList, 0, 0, 0);
+  return;
+}
+
+function addResult(text) {
+  var filename = text.split("\t")[6].trim();
+  text += ' <a href="javascript:void(0);" onclick="openFileInZip(\'' + filename + '\'); return false;">' + filename + '</a>';
+
+  document.getElementById('resultData').innerHTML += "<br>" + text;
+}
+
+function compare(board, queryList) {
+  for (let i = 0; i < queryList.length; i++) {
+    if (!board.match(queryList[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function ShogiBoard() {
+  this.board = startBoard;
+
+  // this.move = function(from, to, piece) {
+  //   this.setPiece(from, '_');
+  //   this.setPiece(to, piece);
+  // }
+
+  this.getPiece = function(xy) {
+    var x = Math.trunc(xy / 10);
+    var y = xy % 10;
+    var i = (9 - x) + (y - 1) * 10;
+    return this.board[i];
+  }
+
+  this.setPiece = function(xy, piece) {
+    var x = Math.trunc(xy / 10);
+    var y = xy % 10;
+    var i = (9 - x) + (y - 1) * 10;
+
+    // this.board[i] = piece;
+    this.board = this.board.substring(0, i) + piece + this.board.substring(i + 1);
+  }
+
+  this.rev = function(piece) {
+    switch (piece) {
+      case 'P':
+        return 'T';
+      case 'L':
+        return 'A';
+      case 'N':
+        return 'I';
+      case 'S':
+        return 'V';
+      case 'G':
+        return 'G';
+      case 'B':
+        return 'H';
+      case 'R':
+        return 'D';
+      case 'K':
+        return 'K';
+      case 'p':
+        return 't';
+      case 'l':
+        return 'a';
+      case 'n':
+        return 'i';
+      case 's':
+        return 'v';
+      case 'g':
+        return 'g';
+      case 'b':
+        return 'h';
+      case 'r':
+        return 'd';
+      case 'k':
+        return 'k';
+    }
+    return piece;
+  }
+
+  this.move16bit = function(b16) {
+    var to = b16 & 0177;
+    var from = (b16 >> 7) & 0177;
+    var promote = (b16 >> 14) & 01;
+    var drop = (b16 >> 15) & 01;
+
+    if (drop) {
+      piece = pieceNumber[from];
+      this.setPiece(to, piece);
+    } else {
+      piece = this.getPiece(from);
+      if (promote) {
+        piece = this.rev(piece);
+      }
+      this.setPiece(from, '_');
+      this.setPiece(to, piece);
+    }
+  }
+}
+
+function openFileInZip(name) {
+  console.log(name);
+  if (zip2chfile) {
+    zip2chfile.file(name).async('uint8array').then(function success(content) {
+      alert(shiftjisDecoder.decode(content));
+    });
+  } else {
+    loadZip(function() {
+      openFileInZip(name);
+    });
+  }
+}
+
+function loadZip(callback) {
+  JSZipUtils.getBinaryContent('2chkifu.zip', function(err, data) { 
+    if (err) {
+      throw err;
+    }
+
+    JSZip.loadAsync(data).then(function (zip) {
+      console.log('loadAsync: <'+zip+'>');
+      zip2chfile = zip;
+      callback();
+    });
+  });
+}
+
+function searchLoop(queryList, i, numKifus, numFound) {
+  var game = new ShogiBoard;
+  var numMoves = 0;
+  for (; Number.isInteger(kifBin[i]); i++) {
+    if (kifBin[i] == 0) {
+      break;
+    }
+    numMoves++;
+    game.move16bit(kifBin[i]);
+    if (compare(game.board, queryList)) {
+      numFound++;
+      addResult(numMoves + "/" + kifInfo[numKifus]);
+    }
+  }
+  numKifus++;
+
+  if (numKifus % 1000 == 0) {
+    document.getElementById('searchState').innerHTML += '*';
+  }
+  if (!Number.isInteger(kifBin[i]) || numFound >= 100) {
+    console.log("searchLoop() end: ", numFound, "/", numKifus + 1);
+    document.getElementById('searchState').innerHTML = '検索終了';
+    return;
+  }
+  window.setZeroTimeout(function() {
+    searchLoop(queryList, i + 1, numKifus, numFound);
+  });
+}
+
+// https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope/setTimeout
+// https://dbaron.org/log/20100309-faster-timeouts
+// Only add setZeroTimeout to the window object, and hide everything
+// else in a closure.
+(function() {
+  var timeouts = [];
+  var messageName = "zero-timeout-message";
+
+  // Like setTimeout, but only takes a function argument.  There's
+  // no time argument (always zero) and no arguments (you have to
+  // use a closure).
+  function setZeroTimeout(fn) {
+    timeouts.push(fn);
+    window.postMessage(messageName, "*");
+  }
+
+  function handleMessage(event) {
+    if (event.source == window && event.data == messageName) {
+      event.stopPropagation();
+      if (timeouts.length > 0) {
+        var fn = timeouts.shift();
+        fn();
+      }
+    }
+  }
+
+  window.addEventListener("message", handleMessage, true);
+
+  // Add the one thing we want added to the window object.
+  window.setZeroTimeout = setZeroTimeout;
+})();
+
+-->
+    </script>
+  </body>
+</html>
