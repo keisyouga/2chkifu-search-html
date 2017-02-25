@@ -239,8 +239,6 @@ function displayKif(num) {
   while (kifBin[startPos + i] && kifBin[startPos + i] != 0) {
     game.move16bit(kifBin[startPos + i]);
     moveinfo = game.getLastMove();
-    console.log(moveinfo);
-    //console.log((i + 1) + " " + kifXY(moveinfo.to) + kifPiece(moveinfo.piece) + "(" + moveinfo.from + ")");
     kifText += (i + 1) + " " + kifXY(moveinfo.to) + kifPiece(moveinfo.piece);
     if (moveinfo.drop) {
       kifText += "打";
