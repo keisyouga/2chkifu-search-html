@@ -3,8 +3,6 @@
   <head>
     <title>2chkifu.zip 検索</title>
     <meta charset="utf-8"/>
-    <script src="jszip.min.js"></script>
-    <script src="jszip-utils.min.js"></script>
   </head>
 
   <body>
@@ -30,8 +28,6 @@
 
 var kifBin;
 var kifInfo;
-var zip2chfile;
-var shiftjisDecoder = new TextDecoder('shift_jis');
 const startBoard = 'lnsgkgsnl/' +  '_r_____b_/' +  'ppppppppp/' +  '_________/' +  '_________/' +  '_________/' +  'PPPPPPPPP/' +  '_B_____R_/' +  'LNSGKGSNL';
 const pieceNumber = '_PLNSGBRKTAIVHDplnsgbrktaivhd';
 
@@ -52,7 +48,7 @@ function loadKifBin() {
     xhr.open("GET", "2chkifu.bin");
     xhr.responseType = "arraybuffer";
     xhr.send();
-  } 
+  }
 }
 
 function loadKifInfo() {
@@ -106,11 +102,9 @@ function startSearch () {
 }
 
 function addResult(text) {
-  // var filename = text.split("\t")[6].trim();
-  // text += ' <a href="javascript:void(0);" onclick="openFileInZip(\'' + filename + '\'); return false;">' + filename + '</a>';
-
-  var info1 = text.split("\t")[7].trim();
-  text += ' <a href="javascript:void(0);" onclick="openFileInZip(\'' + info1 + '\'); return false;">' + info1 + '</a>';
+  var aText = text.split("\t");
+  var numKif = aText.pop();
+  text = aText.join(" ") + ' <a href="javascript:void(0);" onclick="displayKif(\'' + numKif + '\'); return false;">' + numKif + "</a>";
   document.getElementById('resultData').innerHTML += "<br>" + text;
 }
 
@@ -185,27 +179,34 @@ function ShogiBoard() {
     return piece;
   }
 
+  var to, from, promote, drop, piece;
   this.move16bit = function(b16) {
-    var to = b16 & 0177;
-    var from = (b16 >> 7) & 0177;
-    var promote = (b16 >> 14) & 01;
-    var drop = (b16 >> 15) & 01;
+    to = b16 & 0177;
+    from = (b16 >> 7) & 0177;
+    promote = (b16 >> 14) & 01;
+    drop = (b16 >> 15) & 01;
 
     if (drop) {
       piece = pieceNumber[from];
       this.setPiece(to, piece);
     } else {
       piece = this.getPiece(from);
-      if (promote) {
-        piece = this.rev(piece);
-      }
+
       this.setPiece(from, '_');
-      this.setPiece(to, piece);
+      if (promote) {
+        this.setPiece(to, this.rev(piece));
+      } else {
+        this.setPiece(to, piece);
+      }
     }
+  }
+
+  this.getLastMove = function(b16) {
+    return {to, from, promote, drop, piece};
   }
 }
 
-function getKifBinStartPos(n) { 
+function getKifBinStartPos(n) {
   let i = 0;
   while (n > 0) {
     i = kifBin.indexOf(0, i) + 1;
@@ -214,31 +215,45 @@ function getKifBinStartPos(n) {
   return i;
 }
 
-function openFileInZip(name) {
-  console.log(name);
-  // if (zip2chfile) {
-  //   zip2chfile.file(name).async('uint8array').then(function success(content) {
-  //     alert(shiftjisDecoder.decode(content));
-  //   });
-  // } else {
-  //   loadZip(function() {
-  //     openFileInZip(name);
-  //   });
-  // }
+function kifXY(xy) {
+  var x = "０１２３４５６７８９";
+  var y = "〇一二三四五六七八九";
+  return "" + x[String(xy)[0]] + y[String(xy)[1]];
 }
 
-function loadZip(callback) {
-  JSZipUtils.getBinaryContent('2chkifu.zip', function(err, data) { 
-    if (err) {
-      throw err;
-    }
+// P => 歩, L => 香, ...
+function kifPiece(piece) {
+       return [
+         "・", "歩", "香", "桂", "銀", "金", "角", "飛", "玉",
+         "と", "成香", "成桂", "成銀", "馬", "龍",
+         "歩", "香", "桂", "銀", "金", "角", "飛", "玉",
+         "と", "成香", "成桂", "成銀", "馬", "龍"][pieceNumber.indexOf(piece)];
+}
 
-    JSZip.loadAsync(data).then(function (zip) {
-      console.log('loadAsync: <'+zip+'>');
-      zip2chfile = zip;
-      callback();
-    });
-  });
+function displayKif(num) {
+  console.log(num);
+  var startPos = getKifBinStartPos(num);
+  var i = 0;
+  game = new ShogiBoard();
+  var kifText = "";
+  while (kifBin[startPos + i] && kifBin[startPos + i] != 0) {
+    game.move16bit(kifBin[startPos + i]);
+    moveinfo = game.getLastMove();
+    console.log(moveinfo);
+    //console.log((i + 1) + " " + kifXY(moveinfo.to) + kifPiece(moveinfo.piece) + "(" + moveinfo.from + ")");
+    kifText += (i + 1) + " " + kifXY(moveinfo.to) + kifPiece(moveinfo.piece);
+    if (moveinfo.drop) {
+      kifText += "打";
+    } else {
+      if (moveinfo.promote) {
+        kifText += "成";
+      }
+      kifText += "(" + moveinfo.from + ")";
+    }
+    kifText += "\n";
+    i++;
+  }
+  alert(kifText);
 }
 
 function searchLoop(queryList, i, numKifus, numFound) {
@@ -252,7 +267,6 @@ function searchLoop(queryList, i, numKifus, numFound) {
     game.move16bit(kifBin[i]);
     if (compare(game.board, queryList)) {
       numFound++;
-      //addResult(numMoves + "/" + kifInfo[numKifus]);
       addResult(numMoves + "/" + kifInfo[numKifus] + "\t" + numKifus);
     }
   }
