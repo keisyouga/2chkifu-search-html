@@ -6,22 +6,36 @@
   </head>
 
   <body>
-    <H2>2chkifu.zip 検索</h2>
-    <p><a href="https://code.google.com/archive/p/zipkifubrowser/downloads">2chkifu.zip</a>の棋譜の盤面を正規表現で検索します(遅いです)</p>
+    <h1>2chkifu.zip 検索</h1>
+
+    <p><a href="https://code.google.com/archive/p/zipkifubrowser/downloads">2chkifu.zip</a>の棋譜を検索します(遅いです)</p>
     <div id="queryArea">
-      検索パターン（正規表現）<br>
+      検索パターン<br>
       <textarea id="query" rows="3" cols="40" placeholder="^....([A-Za-z]..../....){8}[A-Za-z]"></textarea>
-      <button id="button1" onclick="startSearch()">検索開始</button>
+      <button id="button1" onclick="startSearch()">盤面検索開始</button>
+      <button id="button2" onclick="startSearchMove()">手順検索開始</button>
     </div>
-    <UL>
-      <LI> P:歩 L:香 N:桂 S:銀 G:金 B:角 R:飛 K:玉 T:と金 A:成香 I:成桂 V:成銀 H:馬 D:龍 _:空白 /:段の区切り </LI>
+
+    <h2>駒の表記</h2>
+      <ul>
+      <LI> P:歩 L:香 N:桂 S:銀 G:金 B:角 R:飛 K:玉 T:と金 A:成香 I:成桂 V:成銀 H:馬 D:龍 _:空マス /:段の区切り </LI>
       <LI>先手の駒:大文字 後手の駒:小文字</LI>
+      </ul>
+    <H2>2chkifu.zip 盤面検索</h2>
+    <UL>
       <LI>スペースを空けると複数のパターンになります</LI>
       <LI>持ち駒は検索しません</LI>
       <LI>100以上見つかったら終了します</LI>
       <LI>（参考）初手７六歩の盤面
         <p>lnsgkgsnl/_r_____b_/ppppppppp/_________/_________/__P______/PP_PPPPPP/_B_____R_/LNSGKGSNL</p></LI>
     </UL>
+    <h2>2chkifu.zip 手順検索（簡易）</h2>
+    <ul>
+      <li>初手から指定した指し手と一致する棋譜を検索します</li>
+      <li>1手づつスペースを空けて"76P 34p 22B 22s 45B"のように入力します</li>
+      <li>「打」、「成」は指定できません</li>
+      <LI>100以上見つかったら終了します</LI>
+    </ul>
     <div id="searchState"></div>
     <div id="resultData"></div>
     <script>
@@ -31,7 +45,7 @@ var kifInfo;
 const startBoard = 'lnsgkgsnl/' +  '_r_____b_/' +  'ppppppppp/' +  '_________/' +  '_________/' +  '_________/' +  'PPPPPPPPP/' +  '_B_____R_/' +  'LNSGKGSNL';
 const pieceNumber = '_PLNSGBRKTAIVHDplnsgbrktaivhd';
 
-function loadKifBin() {
+function loadKifBin(callback) {
   var xhr = new XMLHttpRequest();
   if (xhr) {
     xhr.onreadystatechange = function() {
@@ -40,8 +54,10 @@ function loadKifBin() {
           console.log("2chkifu.bin:", xhr.response);
           kifBin = new Uint16Array(xhr.response);
 
-          // call startSearch()
-          startSearch();
+          // assume startSearch()
+          if (callback) {
+            callback();
+          }
         }
       }
     }
@@ -51,9 +67,8 @@ function loadKifBin() {
   }
 }
 
-function loadKifInfo() {
+function loadKifInfo(callback) {
   var xhr = new XMLHttpRequest();
-
   if (xhr) {
     xhr.onreadystatechange = function() {
       if (xhr.readyState == 4) {
@@ -61,8 +76,10 @@ function loadKifInfo() {
           console.log("2chkifu.info:", xhr.response.length);
           kifInfo = xhr.responseText.split("\n");
 
-          // call startSearch()
-          startSearch();
+          // assume startSearch()
+          if (callback) {
+            callback();
+          }
         }
       }
     }
@@ -77,13 +94,13 @@ function startSearch () {
 
   if (!kifBin) {
     console.log("startSearch(): !kifBin");
-    loadKifBin();
+    loadKifBin(startSearch);
     return 0;
   }
 
   if (!kifInfo) {
     console.log("startSearch(): !kifInfo");
-    loadKifInfo();
+    loadKifInfo(startSearch);
     return 0;
   }
 
@@ -93,13 +110,35 @@ function startSearch () {
   var queryStr = document.getElementById("query").value;
   var queryList = queryStr.split(/\s+/);
 
-  var numKifus = 0;
-  var numMoves = 0;
-  var numFound = 0;
-  var game = new ShogiBoard();
   searchLoop(queryList, 0, 0, 0);
   return;
 }
+
+function startSearchMove () {
+  console.log("startSearchMove()");
+
+  if (!kifBin) {
+    console.log("startSearch(): !kifBin");
+    loadKifBin(startSearchMove);
+    return 0;
+  }
+
+  if (!kifInfo) {
+    console.log("startSearch(): !kifInfo");
+    loadKifInfo(startSearchMove);
+    return 0;
+  }
+
+  document.getElementById('searchState').innerHTML = '検索中';
+  document.getElementById('resultData').innerHTML = '結果';
+
+  var queryStr = document.getElementById("query").value;
+  var queryList = queryStr.split(/\s+/);
+
+  searchMoveLoop(queryList, 0, 0, 0);
+  return;
+}
+
 
 function addResult(text) {
   var aText = text.split("\t");
@@ -254,15 +293,51 @@ function displayKif(num) {
   alert(kifText);
 }
 
-function searchLoop(queryList, i, numKifus, numFound) {
+function searchMoveLoop(queryList, posBin, numKifus, numFound) {
   var game = new ShogiBoard;
   var numMoves = 0;
-  for (; Number.isInteger(kifBin[i]); i++) {
-    if (kifBin[i] == 0) {
+  for (; Number.isInteger(kifBin[posBin]); posBin++) {
+    if (kifBin[posBin] == 0) {
+      break;
+    }
+    game.move16bit(kifBin[posBin]);
+    if (!queryList[numMoves]) {
+      numFound++;
+      addResult(numMoves + "/" + kifInfo[numKifus] + "\t" + numKifus);
+      posBin = kifBin.indexOf(0, posBin);
+      break;
+    }
+    if (!(String(game.getLastMove().to) + String(game.getLastMove().piece))
+      .match(RegExp(queryList[numMoves], "i"))) {
+      posBin = kifBin.indexOf(0, posBin);
       break;
     }
     numMoves++;
-    game.move16bit(kifBin[i]);
+  }
+  numKifus++;
+
+  if (numKifus % 1000 == 0) {
+    document.getElementById('searchState').innerHTML += '*';
+  }
+  if (!Number.isInteger(kifBin[posBin]) || numFound >= 100) {
+    console.log("searchMoveLoop() end: ", numFound, "/", numKifus + 1);
+    document.getElementById('searchState').innerHTML = '検索終了';
+    return;
+  }
+  window.setZeroTimeout(function() {
+    searchMoveLoop(queryList, posBin + 1, numKifus, numFound);
+  });
+}
+
+function searchLoop(queryList, posBin, numKifus, numFound) {
+  var game = new ShogiBoard;
+  var numMoves = 0;
+  for (; Number.isInteger(kifBin[posBin]); posBin++) {
+    if (kifBin[posBin] == 0) {
+      break;
+    }
+    numMoves++;
+    game.move16bit(kifBin[posBin]);
     if (compare(game.board, queryList)) {
       numFound++;
       addResult(numMoves + "/" + kifInfo[numKifus] + "\t" + numKifus);
@@ -273,13 +348,13 @@ function searchLoop(queryList, i, numKifus, numFound) {
   if (numKifus % 1000 == 0) {
     document.getElementById('searchState').innerHTML += '*';
   }
-  if (!Number.isInteger(kifBin[i]) || numFound >= 100) {
+  if (!Number.isInteger(kifBin[posBin]) || numFound >= 100) {
     console.log("searchLoop() end: ", numFound, "/", numKifus + 1);
     document.getElementById('searchState').innerHTML = '検索終了';
     return;
   }
   window.setZeroTimeout(function() {
-    searchLoop(queryList, i + 1, numKifus, numFound);
+    searchLoop(queryList, posBin + 1, numKifus, numFound);
   });
 }
 
