@@ -269,6 +269,20 @@ function kifPiece(piece) {
          "と", "成香", "成桂", "成銀", "馬", "龍"][pieceNumber.indexOf(piece)];
 }
 
+function makeKifuStr(info) {
+  var str = "" + kifXY(info.to) + kifPiece(info.piece);
+
+  if (info.drop) {
+    str += "打";
+  } else {
+    if (info.promote) {
+      str += "成";
+    }
+    str += "(" + info.from + ")";
+  }
+  return str;
+}
+
 function displayKif(num) {
   console.log(num);
   var startPos = getKifBinStartPos(num);
@@ -278,19 +292,21 @@ function displayKif(num) {
   while (kifBin[startPos + i] && kifBin[startPos + i] != 0) {
     game.move16bit(kifBin[startPos + i]);
     moveinfo = game.getLastMove();
-    kifText += (i + 1) + " " + kifXY(moveinfo.to) + kifPiece(moveinfo.piece);
-    if (moveinfo.drop) {
-      kifText += "打";
-    } else {
-      if (moveinfo.promote) {
-        kifText += "成";
-      }
-      kifText += "(" + moveinfo.from + ")";
-    }
+    kifText += (i + 1) + " " + makeKifuStr(moveinfo);
     kifText += "\n";
     i++;
   }
   alert(kifText);
+}
+
+function getNextMoveStr(posBin, game) {
+  if (kifBin[posBin] && (kifBin[posBin] != 0)) { 
+    var game2 = new ShogiBoard();
+    game2.board = game.board;
+    game2.move16bit(kifBin[posBin]);
+    return makeKifuStr(game2.getLastMove());
+  }
+  return "";
 }
 
 function searchMoveLoop(queryList, posBin, numKifus, numFound) {
@@ -300,13 +316,14 @@ function searchMoveLoop(queryList, posBin, numKifus, numFound) {
     if (kifBin[posBin] == 0) {
       break;
     }
-    game.move16bit(kifBin[posBin]);
     if (!queryList[numMoves]) {
       numFound++;
-      addResult(numMoves + "/" + kifInfo[numKifus] + "\t" + numKifus);
+      var nextMoveStr = getNextMoveStr(posBin, game);
+      addResult(numMoves + "/" + kifInfo[numKifus] + "\t" + nextMoveStr + "\t" + numKifus);
       posBin = kifBin.indexOf(0, posBin);
       break;
     }
+    game.move16bit(kifBin[posBin]);
     if (!(String(game.getLastMove().to) + String(game.getLastMove().piece))
       .match(RegExp(queryList[numMoves], "i"))) {
       posBin = kifBin.indexOf(0, posBin);
@@ -340,7 +357,8 @@ function searchLoop(queryList, posBin, numKifus, numFound) {
     game.move16bit(kifBin[posBin]);
     if (compare(game.board, queryList)) {
       numFound++;
-      addResult(numMoves + "/" + kifInfo[numKifus] + "\t" + numKifus);
+      var nextMoveStr = getNextMoveStr(posBin + 1, game);
+      addResult(numMoves + "/" + kifInfo[numKifus] + "\t" + nextMoveStr + "\t" + numKifus);
     }
   }
   numKifus++;
