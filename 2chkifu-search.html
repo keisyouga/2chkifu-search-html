@@ -8,10 +8,14 @@
   <body>
     <h1>2chkifu.zip 検索</h1>
 
-    <p><a href="https://code.google.com/archive/p/zipkifubrowser/downloads">2chkifu.zip</a>の棋譜を検索します(遅いです)</p>
+    <ul>
+    <li><a href="https://code.google.com/archive/p/zipkifubrowser/downloads">2chkifu.zip</a>の棋譜を検索します(遅いです)</li>
+    <li>初めに合計20MBくらいのファイルをダウンロードします</li>
+    <li>Firefox でしか試してません</li>
+    </ul>
     <div id="queryArea">
       検索パターン<br>
-      <textarea id="query" rows="3" cols="40" placeholder="^....([A-Za-z]..../....){8}[A-Za-z]"></textarea>
+      <textarea id="query" rows="3" cols="40" placeholder='盤面検索の例:"[Ss]{4}" 手順検索の例:". . 22 22 B"'></textarea>
       <button id="button1" onclick="startSearch()">盤面検索開始</button>
       <button id="button2" onclick="startSearchMove()">手順検索開始</button>
     </div>
